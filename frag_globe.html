@@ -101,7 +101,7 @@
         vec3 spec_map = texture2D( u_EarthSpec, v_Texcoord ).rgb;
         vec3 bump_map = texture2D( u_Bump, v_Texcoord ).rgb;
 
-        vec2 cloud_texture_coordinates = vec2( v_Texcoord.s + u_time, v_Texcoord.t );
+        vec2 cloud_texture_coordinates = vec2( v_Texcoord.s - ( u_time / 10.0 ), v_Texcoord.t );
         vec3 cloud_color = texture2D( u_Cloud, cloud_texture_coordinates ).rgb;
         vec3 cloud_map = texture2D( u_CloudTrans, cloud_texture_coordinates ).rgb;
 
