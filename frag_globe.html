@@ -77,8 +77,18 @@
         vec3 normal = normalize(v_Normal);
         // normalized eye-to-position vector in camera coordinates
         vec3 eyeToPosition = normalize(v_Position);
-        
-        float diffuse = clamp(dot(u_CameraSpaceDirLight, normal), 0.0, 1.0);
+
+        // Bump mapping.
+        float bump_width = 1024.0;
+        float bump_height = 512.0;
+        float bump_center = texture2D( u_Bump, v_Texcoord ).r;
+        float bump_right = texture2D( u_Bump, vec2( v_Texcoord.s + ( 1.0 / bump_width ), v_Texcoord.t ) ).r;
+        float bump_top = texture2D( u_Bump, vec2( v_Texcoord.s, v_Texcoord.t + ( 1.0 / bump_height ) ) ).r;
+        vec3 perturbed_normal = normalize( vec3( bump_center - bump_right, bump_center - bump_top, 0.2 ) );
+        mat3 normal_transform = eastNorthUpToEyeCoordinates( v_positionMC, v_Normal );
+        vec3 bump_normal = normalize( normal_transform * perturbed_normal );
+
+        float diffuse = clamp( dot( u_CameraSpaceDirLight, bump_normal ), 0.0, 1.0 );
 
         vec3 toReflectedLight = reflect(-u_CameraSpaceDirLight, normal);
         float specular = max(dot(toReflectedLight, -eyeToPosition), 0.0);
@@ -88,11 +98,33 @@
 
         vec3 dayColor = texture2D(u_DayDiffuse, v_Texcoord).rgb;
         vec3 nightColor = texture2D(u_Night, v_Texcoord).rgb;
-        //apply gamma correction to nighttime texture
+        vec3 spec_map = texture2D( u_EarthSpec, v_Texcoord ).rgb;
+        vec3 bump_map = texture2D( u_Bump, v_Texcoord ).rgb;
+
+        vec2 cloud_texture_coordinates = vec2( v_Texcoord.s + u_time, v_Texcoord.t );
+        vec3 cloud_color = texture2D( u_Cloud, cloud_texture_coordinates ).rgb;
+        vec3 cloud_map = texture2D( u_CloudTrans, cloud_texture_coordinates ).rgb;
+
+        // Apply gamma correction to nighttime texture.
         nightColor = pow(nightColor,vec3(gammaCorrect));
 
-        vec3 color = ((0.6 * diffuse) + (0.4 * specular)) * dayColor;
-        gl_FragColor = vec4(color, 1.0);
+        // spec_map.r will be 0 if no specularity should be applied, and 1 otherwise.
+        dayColor = ((0.6 * diffuse) + (0.4 * specular * spec_map.r )) * dayColor;
+
+        // Update colors based on cloud coverage.
+        dayColor = mix( cloud_color, dayColor, cloud_map.r );
+        nightColor = mix( vec3( 0.0 ), nightColor, cloud_map.r );
+
+        // Blend day and night textures.
+        vec3 color = mix( nightColor, dayColor, clamp( ( diffuse - ( diffuse / 2.0 ) ) * 4.0, 0.0, 1.0 ) );
+
+        // Rim lighting.
+        float rim_factor = dot( v_Normal, v_Position ) + 1.0;
+        if ( rim_factor > 0.0 ) {
+            color += vec3( rim_factor / 4.0, rim_factor / 2.0, rim_factor / 2.0 );
+        }
+
+        gl_FragColor = vec4( color, 1.0 );
     }
 
     mat3 eastNorthUpToEyeCoordinates(vec3 positionMC, vec3 normalEC)
